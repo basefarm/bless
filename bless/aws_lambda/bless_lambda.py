@@ -3,13 +3,15 @@
     :copyright: (c) 2016 by Netflix Inc., see AUTHORS for more
     :license: Apache, see LICENSE for more details.
 """
-
+import base64
 import logging
 
 import boto3
 import os
 import time
 from bless.cache.bless_lambda_cache import BlessLambdaCache
+import json
+from botocore.exceptions import ClientError
 
 from bless.config.bless_config import BLESS_OPTIONS_SECTION, \
     CERTIFICATE_VALIDITY_BEFORE_SEC_OPTION, \
@@ -27,7 +29,9 @@ from bless.config.bless_config import BLESS_OPTIONS_SECTION, \
     CERTIFICATE_EXTENSIONS_OPTION, \
     REMOTE_USERNAMES_VALIDATION_OPTION, \
     IAM_GROUP_NAME_VALIDATION_FORMAT_OPTION, \
-    REMOTE_USERNAMES_BLACKLIST_OPTION
+    REMOTE_USERNAMES_BLACKLIST_OPTION, \
+    BLESS_IAM_SECTION, \
+    IAM_GROUPS
 from bless.request.bless_request import BlessSchema
 from bless.ssh.certificate_authorities.ssh_certificate_authority_factory import \
     get_ssh_certificate_authority
@@ -38,6 +42,15 @@ from marshmallow.exceptions import ValidationError
 
 global_bless_cache = None
 
+# Load the configuration outside the handler, so caching can work
+# AWS Region determines configs related to KMS
+region = os.environ['AWS_REGION']
+config_file=os.path.join(os.path.dirname(__file__), 'bless_deploy.cfg')
+
+# Load the deployment config values
+print("Region: {}".format(region))
+config = BlessConfig(region,
+                     config_file=config_file)
 
 def lambda_handler(event, context=None, ca_private_key_password=None, entropy_check=True, config_file=None):
     """
@@ -83,7 +96,34 @@ def lambda_handler(event, context=None, ca_private_key_password=None, entropy_ch
     entropy_minimum_bits = config.getint(BLESS_OPTIONS_SECTION, ENTROPY_MINIMUM_BITS_OPTION)
     random_seed_bytes = config.getint(BLESS_OPTIONS_SECTION, RANDOM_SEED_BYTES_OPTION)
     ca_private_key = config.getprivatekey()
+    password_ciphertext_b64 = config.getpassword()
     certificate_extensions = config.get(BLESS_OPTIONS_SECTION, CERTIFICATE_EXTENSIONS_OPTION)
+
+    # Proccess get requests
+    logger.info("Received event: {}".format(json.dumps(event)))
+    if 'rotate_ca' in event:
+        # Verify that the event comes from the right source, so not everybody can trigger rotation.
+        # Verify the source:
+        #        if event['source'] == 'aws.events'
+        #          and event['resources'][0] == ''
+        # TODO
+        config.rotateCA()
+        return
+    if 'get-public-cas' in event and event['get-public-cas']:
+        public_cas = config.getpublickeys()
+        return {'public-cas': public_cas}
+    if 'get-users' in event:
+        output = {}
+        iam = boto3.client('iam')
+        if config.get(BLESS_IAM_SECTION, IAM_GROUPS) is None:
+            return error_response('server_error', 'iam groups is none')
+        for g in config.get(BLESS_IAM_SECTION, IAM_GROUPS).split(","):
+            for user in iam.get_group(GroupName=g)['Users']:
+                if user['UserName'] not in output:
+                    output[user['UserName']] = {}
+                    output[user['UserName']]['groups'] = []
+                output[user['UserName']]['groups'].append(g)
+        return {'users': output}
 
     # Process cert request
     schema = BlessSchema(strict=True)
@@ -109,6 +149,15 @@ def lambda_handler(event, context=None, ca_private_key_password=None, entropy_ch
         return error_response('ClientError', bless_cache.ca_private_key_password_error)
     else:
         ca_private_key_password = bless_cache.ca_private_key_password
+    # decrypt ca private key password
+    if ca_private_key_password is None:
+        kms_client = boto3.client('kms', region_name=region)
+        try:
+            ca_password = kms_client.decrypt(
+                CiphertextBlob=base64.b64decode(password_ciphertext_b64))
+            ca_private_key_password = ca_password['Plaintext']
+        except ClientError as e:
+            return error_response('ClientError', str(e))
 
     # if running as a Lambda, we can check the entropy pool and seed it with KMS if desired
     if entropy_check:
@@ -143,15 +192,20 @@ def lambda_handler(event, context=None, ca_private_key_password=None, entropy_ch
 
     # Authenticate the user with KMS, if key is setup
     if config.get(KMSAUTH_SECTION, KMSAUTH_USEKMSAUTH_OPTION):
+        logger.info('Use KMS auth')
         if request.kmsauth_token:
+            logger.info('Request contains KMS auth token')
             # Allow bless to sign the cert for a different remote user than the name of the user who signed it
             allowed_remotes = config.get(KMSAUTH_SECTION, KMSAUTH_REMOTE_USERNAMES_ALLOWED_OPTION)
+            logger.info('Allowed remotes: "{0}"'.format(allowed_remotes))
             if allowed_remotes:
                 allowed_users = allowed_remotes.split(',')
+                logger.info('Requested remotes: "{0}"'.format(request.remote_usernames))
+                logger.info('Request bastion user: "{0}"'.format(request.bastion_user))
                 requested_remotes = request.remote_usernames.split(',')
-                if allowed_users != ['*'] and not all([u in allowed_users for u in requested_remotes]):
+                if request.remote_usernames != request.bastion_user and allowed_users != ['*'] and not all([u in allowed_users for u in requested_remotes]):
                     return error_response('KMSAuthValidationError',
-                                          'unallowed remote_usernames [{}]'.format(request.remote_usernames))
+                                         'unallowed remote_usernames [{}]'.format(request.remote_usernames))
 
                 # Check if the user is in the required IAM groups
                 if config.get(KMSAUTH_SECTION, VALIDATE_REMOTE_USERNAMES_AGAINST_IAM_GROUPS_OPTION):
@@ -174,8 +228,8 @@ def lambda_handler(event, context=None, ca_private_key_password=None, entropy_ch
                                                                                               required_group_name))
 
             elif request.remote_usernames != request.bastion_user:
-                return error_response('KMSAuthValidationError',
-                                      'remote_usernames must be the same as bastion_user')
+                    return error_response('KMSAuthValidationError',
+                                          'remote_usernames must be the same as bastion_user')
             try:
                 validator = KMSTokenValidator(
                     None,

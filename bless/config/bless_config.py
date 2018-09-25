@@ -146,8 +146,10 @@ class BlessConfig(configparser.RawConfigParser, object):
         if not self.has_section(KMSAUTH_SECTION):
             self.add_section(KMSAUTH_SECTION)
 
+        self.ca_store_type = self.get(BLESS_CA_SECTION, CA_KEY_STORE_TYPE_OPTION).lower()
+
         if not self.has_option(BLESS_CA_SECTION, self.aws_region + REGION_PASSWORD_OPTION_SUFFIX):
-            if not self.has_option(BLESS_CA_SECTION, 'default' + REGION_PASSWORD_OPTION_SUFFIX):
+            if not self.has_option(BLESS_CA_SECTION, 'default' + REGION_PASSWORD_OPTION_SUFFIX) and self.ca_store_type != 'ssm':
                 raise ValueError("No Region Specific And No Default Password Provided.")
             self.kms = boto3.client('kms')
 
@@ -157,9 +159,6 @@ class BlessConfig(configparser.RawConfigParser, object):
             raise ValueError('Invalid log level: {}'.format(logging_level))
         self.logger = logging.getLogger()
         self.logger.setLevel(numeric_level)
-
-        # Read and cache configuration
-        self.ca_store_type = self.get(BLESS_CA_SECTION, CA_KEY_STORE_TYPE_OPTION).lower()
         if self.ca_store_type == 'ssm':
             # Privat, public and passphrase to be stored in SSM
             self.ca_key_validity = int(self.get(BLESS_CA_SECTION, CA_KEY_VALIDITY_OPTION))
@@ -290,7 +289,7 @@ class BlessConfig(configparser.RawConfigParser, object):
 
     @staticmethod
     def _environment_key(section, option):
-        return (re.sub('\W+', '_', section) + '_' + re.sub('\W+', '_', option)).lower()
+        return (re.sub(r'\W+', '_', section) + '_' + re.sub(r'\W+', '_', option)).lower()
 
     @staticmethod
     def _decompress(data, algorithm):

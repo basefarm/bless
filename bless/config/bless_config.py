@@ -19,8 +19,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend as crypto_default_backend
 from datetime import datetime, timedelta
 import pytz
-# TODO: Temp for debugging purposes:
-import json
 
 BLESS_OPTIONS_SECTION = 'Bless Options'
 CERTIFICATE_VALIDITY_BEFORE_SEC_OPTION = 'certificate_validity_before_seconds'
@@ -129,7 +127,7 @@ class BlessConfig(configparser.RawConfigParser, object):
                     VALIDATE_REMOTE_USERNAMES_AGAINST_IAM_GROUPS_OPTION: VALIDATE_REMOTE_USERNAMES_AGAINST_IAM_GROUPS_DEFAULT,
                     IAM_GROUP_NAME_VALIDATION_FORMAT_OPTION: IAM_GROUP_NAME_VALIDATION_FORMAT_DEFAULT,
                     REMOTE_USERNAMES_BLACKLIST_OPTION: REMOTE_USERNAMES_BLACKLIST_DEFAULT,
-                    CA_PRIVATE_KEY_COMPRESSION_OPTION: CA_PRIVATE_KEY_COMPRESSION_OPTION_DEFAULT
+                    CA_PRIVATE_KEY_COMPRESSION_OPTION: CA_PRIVATE_KEY_COMPRESSION_OPTION_DEFAULT,
                     CA_KEY_SIZE_OPTION: CA_KEY_SIZE_OPTION_DEFAULT,
                     CA_KEY_STORE_TYPE_OPTION: CA_KEY_STORE_TYPE_OPTION_DEFAULT
                     }
@@ -139,15 +137,11 @@ class BlessConfig(configparser.RawConfigParser, object):
         if not self.has_section(BLESS_CA_SECTION):
             self.add_section(BLESS_CA_SECTION)
 
+        if not self.has_section(BLESS_OPTIONS_SECTION):
+            self.add_section(BLESS_OPTIONS_SECTION)
+
         if not self.has_section(BLESS_IAM_SECTION):
             self.add_section(BLESS_IAM_SECTION)
-
-        logging_level = self.get(BLESS_OPTIONS_SECTION, LOGGING_LEVEL_OPTION)
-        numeric_level = getattr(logging, logging_level.upper(), None)
-        if not isinstance(numeric_level, int):
-            raise ValueError('Invalid log level: {}'.format(logging_level))
-        self.logger = logging.getLogger()
-        self.logger.setLevel(numeric_level)
 
         if not self.has_section(KMSAUTH_SECTION):
             self.add_section(KMSAUTH_SECTION)
@@ -156,6 +150,13 @@ class BlessConfig(configparser.RawConfigParser, object):
             if not self.has_option(BLESS_CA_SECTION, 'default' + REGION_PASSWORD_OPTION_SUFFIX):
                 raise ValueError("No Region Specific And No Default Password Provided.")
             self.kms = boto3.client('kms')
+
+        logging_level = self.get(BLESS_OPTIONS_SECTION, LOGGING_LEVEL_OPTION)
+        numeric_level = getattr(logging, logging_level.upper(), None)
+        if not isinstance(numeric_level, int):
+            raise ValueError('Invalid log level: {}'.format(logging_level))
+        self.logger = logging.getLogger()
+        self.logger.setLevel(numeric_level)
 
         # Read and cache configuration
         self.ca_store_type = self.get(BLESS_CA_SECTION, CA_KEY_STORE_TYPE_OPTION).lower()
@@ -172,7 +173,7 @@ class BlessConfig(configparser.RawConfigParser, object):
                 raise ValueError("Missing the passphrase KMS key ID for encryption (ca_passphrase_key_id).")
             self.ssm = boto3.client('ssm')
             self.delta = timedelta(seconds=self.ca_key_validity)
-            self.epoch = datetime(1970,1,1,tzinfo=pytz.utc)
+            self.epoch = datetime(1970, 1, 1, tzinfo=pytz.utc)
 
             # Pre-fill the cache
             self._cache()
@@ -181,9 +182,9 @@ class BlessConfig(configparser.RawConfigParser, object):
 
         # TODO: Removing these maks some tests fail, but we do not have the need for this any more
         # We need to rebuild the tests to allow the password to be stored in SSM
-#        if not self.has_option(BLESS_CA_SECTION, self.aws_region + REGION_PASSWORD_OPTION_SUFFIX):
-#            if not self.has_option(BLESS_CA_SECTION, 'default' + REGION_PASSWORD_OPTION_SUFFIX):
-#                raise ValueError("No Region Specific And No Default Password Provided.")
+        # if not self.has_option(BLESS_CA_SECTION, self.aws_region + REGION_PASSWORD_OPTION_SUFFIX):
+        # if not self.has_option(BLESS_CA_SECTION, 'default' + REGION_PASSWORD_OPTION_SUFFIX):
+        # raise ValueError("No Region Specific And No Default Password Provided.")
 
     def getpassword(self):
         """
@@ -203,7 +204,7 @@ class BlessConfig(configparser.RawConfigParser, object):
         in one region can validate in another).
         :return: A list of kmsauth key ids
         """
-        return map(str.strip, self.get(KMSAUTH_SECTION, KMSAUTH_KEY_ID_OPTION).split(','))
+        return list(map(str.strip, self.get(KMSAUTH_SECTION, KMSAUTH_KEY_ID_OPTION).split(',')))
 
     def getpublickeys(self):
         """
@@ -253,7 +254,7 @@ class BlessConfig(configparser.RawConfigParser, object):
 
         ca_private_key_file = self.get(BLESS_CA_SECTION, CA_PRIVATE_KEY_FILE_OPTION)
 
-            # read the private key .pem
+        # read the private key .pem
         with open(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, ca_private_key_file), 'rb') as f:
             return self._decompress(f.read(), compression)
 
@@ -291,7 +292,7 @@ class BlessConfig(configparser.RawConfigParser, object):
     def _environment_key(section, option):
         return (re.sub('\W+', '_', section) + '_' + re.sub('\W+', '_', option)).lower()
 
-        @staticmethod
+    @staticmethod
     def _decompress(data, algorithm):
         """
         Decompress a byte string based of the provided algorithm.
@@ -504,7 +505,6 @@ class BlessConfig(configparser.RawConfigParser, object):
         self._del_ssm("{}/key.{}".format(self.ca_key_prefix, id))
         self._del_ssm("{}/key.pub.{}".format(self.ca_key_prefix, id))
         self._del_ssm("{}/passphrase.b64.{}".format(self.ca_key_prefix, id))
-
 
     def _set_key_cache(self, key):
         """

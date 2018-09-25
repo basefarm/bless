@@ -42,15 +42,6 @@ from marshmallow.exceptions import ValidationError
 
 global_bless_cache = None
 
-# Load the configuration outside the handler, so caching can work
-# AWS Region determines configs related to KMS
-region = os.environ['AWS_REGION']
-config_file=os.path.join(os.path.dirname(__file__), 'bless_deploy.cfg')
-
-# Load the deployment config values
-print("Region: {}".format(region))
-config = BlessConfig(region,
-                     config_file=config_file)
 
 def lambda_handler(event, context=None, ca_private_key_password=None, entropy_check=True, config_file=None):
     """

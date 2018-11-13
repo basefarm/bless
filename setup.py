@@ -22,7 +22,8 @@ setup(
         'cryptography',
         'ipaddress',
         'marshmallow',
-        'kmsauth'
+        'kmsauth',
+        'pytz'
     ],
     extras_require={
         'tests': [

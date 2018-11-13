@@ -37,6 +37,11 @@ publish:
 	cp -r ./aws_lambda_libs/. ./publish/bless_lambda/
 	if [ -d ./lambda_configs/ ]; then cp -r ./lambda_configs/. ./publish/bless_lambda/; fi
 	cd ./publish/bless_lambda && zip -FSr ../bless_lambda.zip .
+	cd ../..
+	rm -rf ./publish/bless_sync/
+	mkdir -p ./publish/bless_sync/
+	cp -r ./bless-server-client/* ./publish/bless_sync/
+	cd ./publish/bless_sync && zip -r ../bless_sync.zip .
 
 compile:
 	yum install -y gcc libffi-devel openssl-devel python36 python36-virtualenv

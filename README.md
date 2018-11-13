@@ -47,6 +47,12 @@ Run the tests:
 
     (venv) $ make test
 
+Or you could run this from within docker, not having to polute your own computer:
+
+   $ docker run --rm -it -v ${CURDIR}:/src -w /src amazonlinux
+   $ make compile
+   $ make develop
+   $ make test
 
 ## Deployment
 To deploy an AWS Lambda Function, you need to provide a .zip with the code and all dependencies.

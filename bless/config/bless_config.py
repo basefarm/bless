@@ -192,7 +192,9 @@ class BlessConfig(configparser.RawConfigParser, object):
         """
         if hasattr(self, 'encrypted_password') and self.encrypted_password is not None:
             self.logger.info('GetPassword: Returning encrypted password')
-            return self.encrypted_password.encode('ascii')
+            if type(self.encrypted_password) is str:
+                return self.encrypted_password.encode('ascii')
+            return self.encrypted_password.decode('ascii')
         if self.has_option(BLESS_CA_SECTION, self.aws_region + REGION_PASSWORD_OPTION_SUFFIX):
             return self.get(BLESS_CA_SECTION, self.aws_region + REGION_PASSWORD_OPTION_SUFFIX)
         return self.get(BLESS_CA_SECTION, 'default' + REGION_PASSWORD_OPTION_SUFFIX)
@@ -376,10 +378,13 @@ class BlessConfig(configparser.RawConfigParser, object):
         Put a value in SSM parameter store, using a provided KMS encryption key
         for secure storage.
         """
+        value_string = value
+        if type(value) is bytes:
+            value_string = value.decode("utf-8")
         self.logger.info('SSM PutParameter "{0}"'.format(name))
         self.ssm.put_parameter(
             Name=name,
-            Value=value,
+            Value=value_string,
             Type='SecureString',
             KeyId=keyid,
             Overwrite=overwrite)
@@ -520,7 +525,7 @@ class BlessConfig(configparser.RawConfigParser, object):
         Create one CA, including private and public parts and passphrase
         Uses the configuration stored by __init__ in self.
         """
-        passphrase = os.urandom(30).encode('base64').strip()
+        passphrase = base64.b64encode(os.urandom(30)).strip()
         try:
             stuff = self.kms.encrypt(KeyId=self.ca_passphrase_key_id,
                                 Plaintext=passphrase)

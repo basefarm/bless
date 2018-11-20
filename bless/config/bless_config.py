@@ -248,7 +248,10 @@ class BlessConfig(configparser.RawConfigParser, object):
         if self.ca_store_type == 'ssm':
             self._cache()
             self.logger.info('GetPrivateKey: Returning private key.')
-            return self.key_priv.encode('ascii')
+            if type(self.key_priv) is bytes:
+                return self.key_priv
+            if type(self.key_priv) is str:
+                return self.key_priv.encode('ascii')
         else:
             if self.has_option(BLESS_CA_SECTION, CA_PRIVATE_KEY_OPTION):
                 return self._decompress(base64.b64decode(self.get(BLESS_CA_SECTION, CA_PRIVATE_KEY_OPTION)), compression)

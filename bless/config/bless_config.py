@@ -151,7 +151,7 @@ class BlessConfig(configparser.RawConfigParser, object):
         if not self.has_option(BLESS_CA_SECTION, self.aws_region + REGION_PASSWORD_OPTION_SUFFIX):
             if not self.has_option(BLESS_CA_SECTION, 'default' + REGION_PASSWORD_OPTION_SUFFIX) and self.ca_store_type != 'ssm':
                 raise ValueError("No Region Specific And No Default Password Provided.")
-            self.kms = boto3.client('kms')
+            self.kms = boto3.client('kms', region_name = self.aws_region)
 
         logging_level = self.get(BLESS_OPTIONS_SECTION, LOGGING_LEVEL_OPTION)
         numeric_level = getattr(logging, logging_level.upper(), None)

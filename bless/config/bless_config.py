@@ -193,7 +193,8 @@ class BlessConfig(configparser.RawConfigParser, object):
         if hasattr(self, 'encrypted_password') and self.encrypted_password is not None:
             self.logger.info('GetPassword: Returning encrypted password')
             if type(self.encrypted_password) is str:
-                return self.encrypted_password.encode('ascii')
+                # return self.encrypted_password.encode('ascii')
+                return self.encrypted_password
             return self.encrypted_password.decode('ascii')
         if self.has_option(BLESS_CA_SECTION, self.aws_region + REGION_PASSWORD_OPTION_SUFFIX):
             return self.get(BLESS_CA_SECTION, self.aws_region + REGION_PASSWORD_OPTION_SUFFIX)
@@ -420,6 +421,7 @@ class BlessConfig(configparser.RawConfigParser, object):
             elif param['Name'] == '{}/passphrase.b64.{}'.format(self.ca_key_prefix, id):
                 key_pass = param['Value']
         key = {'private': key_priv, 'public': key_pub, 'pass': key_pass, 'ts': key_ts}
+        # self.logger.debug('GURBA: _get_params({}): {}'.format(str(id), key))
         return key
 
     def _key_ok(self, key_ts=None):
@@ -507,11 +509,13 @@ class BlessConfig(configparser.RawConfigParser, object):
         self._put_ssm("{}/key.{}".format(self.ca_key_prefix, id), key['private'], self.ca_private_key_key_id)
         self._put_ssm("{}/key.pub.{}".format(self.ca_key_prefix, id), key['public'], self.ca_public_key_key_id)
         self._put_ssm("{}/passphrase.b64.{}".format(self.ca_key_prefix, id), key['pass'], self.ca_passphrase_key_id)
+        # self.logger.debug('GURBA: _put_key({}, {})'.format(key, str(id)))
 
     def _del_key(self, id):
         self._del_ssm("{}/key.{}".format(self.ca_key_prefix, id))
         self._del_ssm("{}/key.pub.{}".format(self.ca_key_prefix, id))
         self._del_ssm("{}/passphrase.b64.{}".format(self.ca_key_prefix, id))
+        # self.logger.debug('GURBA: _del_key({})'.format(str(id)))
 
     def _set_key_cache(self, key):
         """
@@ -522,6 +526,7 @@ class BlessConfig(configparser.RawConfigParser, object):
         self.key_pub = key['public']
         self.key_ts = key['ts']
         self.encrypted_password = key['pass']
+        # self.logger.debug('GURBA: _set_key_cache({})'.format(key))
 
     def _create_CA(self, id):
         """
@@ -529,6 +534,7 @@ class BlessConfig(configparser.RawConfigParser, object):
         Uses the configuration stored by __init__ in self.
         """
         passphrase = base64.b64encode(os.urandom(30)).strip()
+        # self.logger.debug('GURBA: _create_CA({}): passphrase={}'.format(str(id), passphrase))
         try:
             stuff = self.kms.encrypt(KeyId=self.ca_passphrase_key_id,
                                 Plaintext=passphrase)
@@ -536,8 +542,10 @@ class BlessConfig(configparser.RawConfigParser, object):
             encrypted_password = base64.b64encode(binary_encrypted)
         except ClientError as e:
             raise str(e)
+        # self.logger.debug('GURBA: _create_CA_key({}, {})'.format(str(self.ca_key_size), passphrase))
         (key_priv, key_pub) = self._create_CA_key(self.ca_key_size, passphrase)
         key = {'private': key_priv, 'public': key_pub, 'pass': encrypted_password, 'ts': datetime.now(pytz.utc)}
+        # self.logger.debug('GURBA: _create_CA({}): key={}'.format(str(id), key))
         self._put_key(key, id)
         return key
 

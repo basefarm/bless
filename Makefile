@@ -5,8 +5,8 @@ test: lint
 
 develop:
 	@echo "--> Installing dependencies"
-	pip install -r requirements.txt
-	pip install "file://`pwd`#egg=bless[tests]"
+	python3 -m pip install -r requirements.txt
+	python3 -m pip install "file://`pwd`#egg=bless[tests]"
 	@echo ""
 
 dev-docs:

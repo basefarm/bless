@@ -243,8 +243,8 @@ def lambda_handler(event, context=None, ca_private_key_password=None, entropy_ch
 
     # Build the cert
     # DEBUG:
-    #logger.debug('GURBA: Private key passphrase: "{}"'.format(ca_private_key_password))
-    #logger.debug('GURBA: Private key: "{}"'.format(ca_private_key))
+    # logger.debug('GURBA: Private key passphrase: "{}"'.format(ca_private_key_password))
+    # logger.debug('GURBA: Private key: "{}"'.format(ca_private_key))
     ca = get_ssh_certificate_authority(ca_private_key, ca_private_key_password)
     cert_builder = get_ssh_certificate_builder(ca, SSHCertificateType.USER,
                                                request.public_key_to_sign)
